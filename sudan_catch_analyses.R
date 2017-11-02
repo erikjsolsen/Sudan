@@ -19,12 +19,12 @@ library(sp)
 library(rgdal)
 library(rgeos)
 # plyr mus be loaded befor dplyr for both to work
-library("plyr", lib.loc="/Users/eriko/Library/R/3.3/library") 
+library(plyr) 
 library(dplyr)
 library(tidyr)
-library("maptools", lib.loc="/Users/eriko/Library/R/3.3/library")
-library("marmap", lib.loc="/Users/eriko/Library/R/3.0/library")
-library("classInt", lib.loc="/Users/eriko/Library/R/3.0/library")
+library(maptools)
+library(marmap)
+library(classInt)
 
 source('multiplot function.R', encoding='UTF-8')
 
