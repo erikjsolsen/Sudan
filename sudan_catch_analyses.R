@@ -26,7 +26,7 @@ library("maptools", lib.loc="/Users/eriko/Library/R/3.3/library")
 library("marmap", lib.loc="/Users/eriko/Library/R/3.0/library")
 library("classInt", lib.loc="/Users/eriko/Library/R/3.0/library")
 
-source('~/AtlantisNEUS_R/multiplot function.R', encoding='UTF-8')
+source('multiplot function.R', encoding='UTF-8')
 
 #' CATCH DATA
 #' --------------------------
