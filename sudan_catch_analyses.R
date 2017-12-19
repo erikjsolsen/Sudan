@@ -26,11 +26,12 @@ library(maptools)
 library(marmap)
 library(classInt)
 
+setwd("~/github/sudan")
+
 source('multiplot function.R', encoding='UTF-8')
 
 #' CATCH DATA
 #' --------------------------
-setwd("~/github/sudan")
 catch<-read.csv2("catch.csv")
 catch$survey<-as.factor(catch$survey)
 catch$CPUEw<-catch$weight/catch$Fhrs
@@ -89,9 +90,31 @@ ps<-rbind(data.frame(x=37.21709967,y=19.600512, group=1, survey_m=c("Survey 1: N
 catch.points<- SpatialPoints(catch[8:9])
 proj4string(catch.points) <- proj4string(ManageAreas)
 catch.areas<-over(catch.points, ManageAreas)
+catch.areas$id <- as.integer(catch.areas$id)
+
+#' correct for errors in numbering areas
+catch.areas[grep("3|4|5|6|8", catch.areas$id),]$id <- catch.areas[grep("3|4|5|6|8", catch.areas$id),]$id-1
+
+catch.areas$id <- as.factor(catch.areas$id)
 
 catch <- cbind(catch, catch.areas[1:2])
 
+
+
+#' add area no to stations outside of managment area polygons
+new_df <- subset(catch, is.na(catch$name))
+new_df$id <- as.factor(new_df$Area)
+new_df[1,]$name <- c("Arakiai")
+new_df[2:8,]$name <- c("Suakin Archipelago")
+new_df[9:16,]$name <- c("Donganab")
+
+catch <-rbind(subset(catch, !is.na(catch$name)), new_df)
+
+
+#' Change family names to Upper & Lower case
+catch$FamGroup2 <- paste(toupper(substr(catch$FamGroup, 1, 1)), tolower(substr(catch$FamGroup, 2, 20)), sep="")
+
+catch$FamGroup2 <- as.factor(catch$FamGroup2)
 
 #' SELECTING AND MANIPULATING CATCH DATA
 #' -----------------------------------
@@ -103,8 +126,9 @@ catch1<-subset(catch1, Fhrs>1)
 catch.traps<-subset(catch1, gear!="GN")
 
 #' reordering the species groups
-fam.names<-c("ACANTHURIDAE", "CARANGIDAE", "CHIROCENTRIDAE", "LETHRINIDAE", "LUTJANIDAE", "SCOMBRIDAE",     "SERRANIDAE", "OTHER SPP" )  
-levels(catch1$FamGroup)<-fam.names
+fam.names<-c("Acanthuridae", "Carangidae", "Chirocentridae", "Lethrinidae", "Lutjanidae", "Scombridae",     "Serranidae", "Other spp" )  
+
+levels(catch1$FamGroup2)<-fam.names
 
 
 
@@ -152,14 +176,14 @@ dev.off()
 
 #' PLOTTING CATCH POSITIONS BY SURVEY (FIGURE 2)
 #' ----------------------------------
-sudan.map<-ggplot(catch, aes(x=lon, y=lat, group=survey_m)) + geom_point(shape="+", size=6, aes(group=survey_m, colour= survey_m)) + facet_wrap(~survey_m, ncol=3) + geom_polygon(data=world, colour="gray35", fill="gray85", aes(x=long, y=lat, group=survey_m)) +  coord_cartesian(xlim = c(36.5, 39), ylim=c(17.7, 22.5)) + theme_classic() + geom_point(data=ps, size=5, colour="gray35", aes(x=x, y=y)) + geom_text(data=ps, label="PZU", size=5,  hjust=1, vjust=-1.2,  aes(x=x, y=y, group=survey_m)) +scale_colour_brewer(type = "seq", palette = "Dark2", name="Survey month & year", labels=c("Nov. 2012", "May. 2013", "Nov. 2013")) + theme(legend.position="none")
+sudan.map<-ggplot(catch, aes(x=lon, y=lat, group=survey_m)) + geom_point(shape="+", size=6, aes(group=survey_m, colour= survey_m)) + facet_wrap(~survey_m, ncol=3) + geom_polygon(data=world, colour="gray35", fill="gray85", aes(x=long, y=lat, group=survey_m)) +  coord_cartesian(xlim = c(36.5, 39), ylim=c(17.7, 22.5)) + theme_classic() + geom_point(data=ps, size=5, colour="gray35", aes(x=x, y=y)) + geom_text(data=ps, label="PZU", size=5,  hjust=1, vjust=-1.2,  aes(x=x, y=y, group=survey_m)) +scale_colour_brewer(type = "seq", palette = "Dark2", name="Survey month & year", labels=c("Nov. 2012", "May. 2013", "Nov. 2013")) + theme(legend.position="none") + xlab("Longitude") + ylab("Latitude")
 sudan.map
 ggsave("Fig 2 sudan_stations_12_13_facet.tiff")
 
 
 
 
-
+####### DON'T USE ####
 #' ANOVA OF CATCHES BY GEAR AND MANAGEMENT AREAS (CPUE by Weight)
 #' ---------------------------
 
@@ -186,28 +210,119 @@ posthoc <- TukeyHSD(x=a1, 'Area', conf.level=0.95)
 posthoc
 # not significan for any area-area combination
 
+##### END DON'T RUN
+
+
+# Statistical comparison of catch rates
+# Weight - CPUE
+
+#' Kruskal - Wallis  (non.parametric alternative to ANOVA)
+
+group_by(catch, id) %>% 
+  summarise(
+    count = n(),
+    mean = mean(CPUEw, na.rm = TRUE),
+    sd = sd(CPUEw, na.rm = TRUE),
+    median = median(CPUEw, na.rm = TRUE),
+    IQR = IQR(CPUEw, na.rm = TRUE)
+  )
+
+# boxplot of catch pr mgmt areas
+library("ggpubr")
+mypalette<-brewer.pal(7,"Accent")
+ggboxplot(catch, x = "id", y = "CPUEw", 
+          color = "id", palette = mypalette,
+          order = c("1", "2", "3", "4", "5", "6", "7"),
+          ylab = "CPUE kg/hr", xlab = "management areas")
+ggsave("boxplot_mgmt_areas_cpue.png")
+
+# Kruskal -Wallis test - By areas
+kruskal.test(CPUEw ~ id, data = catch)
+# by survey
+kruskal.test(CPUEn ~ survey, data = catch)
+
+# significant difference
+
+# Post-hoc
+# Pair.wise Wilcoxon test
+
+pairwise.wilcox.test(catch$CPUEw, catch$id, p.adjust.method = "BH")
+
+# Dunn test for multiple comparisons
+library("FSA")
+
+DT <- dunnTest(CPUEw ~id, data=catch, method="bh")
+DT
+
+dunnTest(CPUEw ~id, data=catch)
+dunnTest(CPUEw ~id, data=catch, method="bonferroni")
+
+
+# Numbers - CPUE
+
+#' Kruskal - Wallis  (non.parametric alternative to ANOVA)
+
+group_by(catch, survey) %>% 
+  summarise(
+    count = n(),
+    mean = mean(CPUEn, na.rm = TRUE),
+    sd = sd(CPUEn, na.rm = TRUE),
+    median = median(CPUEn, na.rm = TRUE),
+    IQR = IQR(CPUEn, na.rm = TRUE)
+  )
+
+# boxplot of catch pr mgmt areas
+library("ggpubr")
+mypalette<-brewer.pal(7,"Accent")
+ggboxplot(catch, x = "survey", y = "CPUEn", 
+          color = "survey", palette = mypalette,
+          ylab = "CPUE no fish/hr", xlab = "surveys")
+ggsave("boxplot_surveys.png")
+
+# Kruskal -Wallis test
+kruskal.test(CPUEn ~ id, data = catch)
+
+
+# by survey
+kruskal.test(CPUEn ~ survey, data = catch)
+
+# significant difference
+
+# Post-hoc
+# Pair.wise Wilcoxon test
+
+pairwise.wilcox.test(catch$CPUEn, catch$survey, p.adjust.method = "BH")
+
+# Dunn test for multiple comparisons
+library("FSA")
+
+DT <- dunnTest(CPUEn ~survey, data=catch, method="bh")
+DT
+
+
 
 
 #' CPUE (weight) PLOT BY GEAR TYPE (FIGURE 3)
 #' ------------------------------
-catch.3gear<-subset(catch1, gear=="GN" | gear=="HL" | gear =="TB")
+catch.3gear<-subset(catch, gear=="GN" | gear=="HL" | gear =="TB")
 
-gear.plot <- ggplot(catch.3gear, aes(FamGroup, fill=survey_m)) + geom_bar(binwidt=0.2, aes( weight=CPUEw)) +theme_bw() + facet_wrap(~gear) + coord_flip() +xlab("") + ylab("kg fish/hour fishing")  + guides(fill=guide_legend(title="Survey"))
-gear.plot
+gear.plot <- ggplot(catch.3gear, aes(FamGroup2, fill=survey_m)) + geom_bar(binwidt=0.2, aes( weight=CPUEw)) +theme_bw() +facet_grid(gear ~ survey) + coord_flip() +xlab("") + ylab("kg fish/hour fishing")  + guides(fill=guide_legend(title="Survey")) 
+gear.plot + theme(panel.grid.major = element_blank()) + theme(panel.grid.minor = element_blank())
 ggsave("Fig 3 gearplot.tiff")
+# ggsave("Fig 3 gearplot.pdf")
 
 
 
 
 #' CPUE (weight) PLOT BY MANAGEMENT AREAS (FIGURE 4)
 #' ---------------------------------
-lat.plot<-ggplot(catch1, aes(Area, fill=FamGroup)) + geom_bar(binwidt=0.2, aes( weight=CPUEw)) +theme_bw() + scale_x_reverse(breaks=c(1,2,3,4,5,6,7)) 
+lat.plot<-ggplot(catch1, aes(Area, fill=FamGroup2)) + geom_bar(binwidt=0.2, aes( weight=CPUEw)) +theme_classic() + scale_x_reverse(breaks=c(1,2,3,4,5,6,7)) 
 lat.plot + scale_fill_brewer(palette="RdYlBu", name="Family groups") + coord_flip() + theme(legend.title = element_text(size=14, face="bold")) + theme(legend.text = element_text(size=12)) + ylab("CPUE weight (kg) of fish/hr fishing") + xlab("Management areas from N (1) to S (7)") 
 #+ theme(axis.text.x = element_blank()) 
 #lat.plot
 #figure 
 ggsave("Fig 4 management area CPUE weight.tiff")
-
+ggsave("Fig 4 management area CPUE weight.pdf")
 
 
 #' GRIDDING CATCH DATA (CPUE by weight) to 0.1 x 0.1 DEGREE GRID OF SUDAN
@@ -246,13 +361,13 @@ top_catch_pr_cell<-as.data.frame(group_by(topfish,Sci_name, survey,x,y) %>%  sum
 colnames(top_catch_pr_cell)[7] <- c("survey_m")
 
 #catch by gear type
-TBspecies_catch_pr_cell<-as.data.frame(group_by(TBcpue,survey,Fam_name,x,y) %>% summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
+TBspecies_catch_pr_cell<-as.data.frame(group_by(TBcpue,survey,Fam_name2,x,y) %>% summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
 colnames(TBspecies_catch_pr_cell)[7] <- c("survey_m")
 
-HLspecies_catch_pr_cell<-as.data.frame(group_by(HLcpue,survey,Fam_name,x,y) %>%  summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
+HLspecies_catch_pr_cell<-as.data.frame(group_by(HLcpue,survey,Fam_name2,x,y) %>%  summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
 colnames(HLspecies_catch_pr_cell)[7] <- c("survey_m")
 
-GNspecies_catch_pr_cell<-as.data.frame(group_by(GNcpue,survey,Fam_name,x,y) %>%  summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
+GNspecies_catch_pr_cell<-as.data.frame(group_by(GNcpue,survey,Fam_name2,x,y) %>%  summarise(mean=mean(CPUEw), total=sum(CPUEw), first(survey_m)))
 colnames(GNspecies_catch_pr_cell)[7] <- c("survey_m")
 
 #weight categories
@@ -339,14 +454,14 @@ areanum<-as.data.frame(cbind(mlon, mlat, mname, group))
 colnames(areanum)<-c("lon", "lat", "mname", "group")
 
 #' MAP TOTAL CATCHES PR CELL (FIGURE 5)
-RedSeaMap2<-ggplot(plotdata1) + geom_tile(aes(x,y,fill=factor(ALL_catVar))) + scale_fill_brewer(palette="OrRd", labels=il) + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + theme_bw() + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + xlim(36.5, 39) +ylim(18, 22)  + geom_path( data=ManageAreas.f, aes(x=long, y=lat, group=group) ) + geom_text(data=areanum,  aes(x=lon, y=lat, label=mname)) 
+RedSeaMap2<-ggplot(plotdata1) + geom_tile(aes(x,y,fill=factor(ALL_catVar))) + scale_fill_brewer(palette="OrRd", labels=il) + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + theme_classic() + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + xlim(36.5, 39) +ylim(18, 22)  + geom_path( data=ManageAreas.f, aes(x=long, y=lat, group=group) ) + geom_text(data=areanum,  aes(x=lon, y=lat, label=mname)) +xlab("Longitude") +ylab("Latitude")
 RedSeaMap2
 
-ggsave("Fig 5 total biomass all gear areas.tiff", scale = 1.5, dpi = 400) # save plot to file
+ggsave("Fig 5 total biomass all gear areas.tiff", width=6.5, height =8, dpi = 400) # save plot to file
 
 
 #' FACETED MAPS, BY GEAR AND 3 MOST PROMINENT FAMILIES
-facets<-c("LETHRINIDAE", "LUTJANIDAE", "SERRANIDAE")
+facets<-c("Lethrinidae", "Lutjanidae", "Serranidae")
 
 #' Add Month. Year survey column as factor
 TBplotdata$survey_m<-as.character(TBplotdata$survey)
@@ -371,27 +486,27 @@ GNplotdata$survey_f<-factor(GNplotdata$survey_m, levels=c('Nov. 2012','May 2013'
 
 
 
-#' TRAPS FACETED MAP (FIGURE 6)
-TB_map<-ggplot(TBplotdata[TBplotdata$Fam_name %in% facets,]) + theme_bw() + geom_tile(aes(x,y,fill=factor(TB_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Traps - by survey") + facet_wrap(~Fam_name + survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4)
+#' TRAPS FACETED MAP (FIGURE SI 1)
+TB_map<-ggplot(TBplotdata[TBplotdata$Fam_name2 %in% facets,]) + theme_classic() + geom_tile(aes(x,y,fill=factor(TB_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Traps - by survey") + facet_grid(Fam_name2 ~ survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4) + xlab("Longitude") + ylab("Latitude")
 TB_map
-ggsave("Fig 6 TB_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
+ggsave("Fig SI 1 TB_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
 
 
-#' HANDLINES FACETED MAP (FIGURE 7)
-HL_map<-ggplot(HLplotdata[HLplotdata$Fam_name %in% facets,]) + theme_bw() + geom_tile(aes(x,y,fill=factor(HL_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Handlines - by survey") + facet_wrap(~Fam_name + survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4)
+#' HANDLINES FACETED MAP (FIGURE SI 2)
+HL_map<-ggplot(HLplotdata[HLplotdata$Fam_name2 %in% facets,]) + theme_classic() + geom_tile(aes(x,y,fill=factor(HL_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Handlines - by survey") + facet_grid(Fam_name2 ~ survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4) + xlab("Longitude") + ylab("Latitude")
 HL_map
-ggsave("Fig 7 HL_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
+ggsave("Fig SI 2 HL_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
 
 
-#' HANDLINES FACETED MAP (FIGURE 8)
-GN_map<-ggplot(GNplotdata[GNplotdata$Fam_name %in% facets,]) + theme_bw() + geom_tile(aes(x,y,fill=factor(GN_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Gillnet - by survey") + facet_wrap(~Fam_name + survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4)
+#' HANDLINES FACETED MAP (FIGURE SI 3)
+GN_map<-ggplot(GNplotdata[GNplotdata$Fam_name2 %in% facets,]) + theme_classic() + geom_tile(aes(x,y,fill=factor(GN_catVar))) + scale_fill_brewer(palette="OrRd", labels=il)  + labs(x = "LON", y = "LAT", fill = "kg/hr fishing") + ggtitle("CPUE Gillnet - by survey") + facet_grid(Fam_name2 ~ survey_f)  + geom_polygon(data=sudanmap3, aes(x=long, y=lat, group=group, fill=group), fill="gray90") + geom_tile(data=plotdata1,aes(x=x,y=y),colour="black",fill="white",alpha=0,lwd=0.4) + xlab("Longitude") + ylab("Latitude")
 GN_map
-ggsave("Fig 8 GN_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
+ggsave("Fig SI 3 GN_CPUE_by_survey_facets.tiff", scale = 1, width=7.78, height=10, dpi = 400)
 
 
 
 
-#' LENGTH WEIGHT ANALYSIS (FIGURE 9)
+#' LENGTH WEIGHT ANALYSIS (FIGURE 6)
 #' ---------------------------------
 
 study.species<-c("LUTLU06", "LETLE02","LUTLU04","CARSC01","CARSC04","ACAAC28")
@@ -471,10 +586,11 @@ write.csv2(species.lw.table, file= "species_LW_table.csv")
 
 #' L-W PLOTS
 lw.colours<- c("gray10", brewer.pal(length(study.species), "Set1"))
+
 for (i in 1:length(study.species)){ 
   
   ss<-subset(lw.select, species==study.species[i])
-  lw.plot.1<-ggplot(ss, aes(length, weight)) + geom_point() + ggtitle(species.list[grep(study.species[i], species.list[,3]),4]) + theme_classic()
+  lw.plot.1<-ggplot(ss, aes(length, weight)) + geom_point() + ggtitle(species.list[grep(study.species[i], species.list[,3]),4]) + theme_classic() + theme(title = element_text(face="italic"))
   #' +stat_smooth(colour=lw.colours[1])
   #lw.plot.1
   
@@ -547,6 +663,7 @@ spue.agg<-aggregate(spue.table, list(Area = spue.table$area), mean)
 
 sp_n_area <- catch %>% group_by(name) %>% summarise(Tot_N_species=n_distinct(Sci_name))
 
+summary(sp_n_area)
 
 #ANOVA Species Numbers (not corrected for effort)
 spue.df<-spue.table
@@ -565,6 +682,11 @@ spue.mod <- data.frame(Fitted = fitted(spue.anova), Residuals = resid(spue.anova
 spue.aov<-aov(nspec ~ area, data = spue.df)
 posthoc<-TukeyHSD(x=spue.aov, 'area', conf.level=0.95)
 # no significan effects
+
+#kruskal Wallis
+kruskal.test(nspec ~ area, data = spue.df)
+#not significant
+
 
 #ANOVA Species CPUE
 spue.df<-spue.table
