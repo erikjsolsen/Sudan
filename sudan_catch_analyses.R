@@ -32,7 +32,7 @@ source('multiplot function.R', encoding='UTF-8')
 
 #' CATCH DATA
 #' --------------------------
-catch<-read.csv2("catch.csv")
+catch<-read.csv2("catch2.csv")
 catch$survey<-as.factor(catch$survey)
 catch$CPUEw<-catch$weight/catch$Fhrs
 catch$CPUEn<-catch$number/catch$Fhrs
@@ -90,13 +90,12 @@ ps<-rbind(data.frame(x=37.21709967,y=19.600512, group=1, survey_m=c("Survey 1: N
 catch.points<- SpatialPoints(catch[8:9])
 proj4string(catch.points) <- proj4string(ManageAreas)
 catch.areas<-over(catch.points, ManageAreas)
-catch.areas$id <- as.integer(catch.areas$id)
+catch.areas$id <- as.integer(as.character(catch.areas$id))
 
 #' correct for errors in numbering areas
-catch.areas[grep("3|4|5|6|8", catch.areas$id),]$id <- catch.areas[grep("3|4|5|6|8", catch.areas$id),]$id-1
-
+catch.areas[grep("3|4|5|6", catch.areas$id),]$id <- catch.areas[grep("3|4|5|6", catch.areas$id),]$id-1
+catch.areas[grep("8", catch.areas$id),]$id <- catch.areas[grep("8", catch.areas$id),]$id-2
 catch.areas$id <- as.factor(catch.areas$id)
-
 catch <- cbind(catch, catch.areas[1:2])
 
 
@@ -129,6 +128,48 @@ catch.traps<-subset(catch1, gear!="GN")
 fam.names<-c("Acanthuridae", "Carangidae", "Chirocentridae", "Lethrinidae", "Lutjanidae", "Scombridae",     "Serranidae", "Other spp" )  
 
 levels(catch1$FamGroup2)<-fam.names
+
+
+#' TABLE OF SAMPLING EFFORT PR. MANAGEMENT AREA
+#' (new for resubmission to PlosOne)
+#' --------------------------------------------
+
+s <- unique(catch$survey)
+a <- as.factor(1:7)
+ay_info <- data.frame(survey=integer(), id=integer(), Ntraps=integer(), Nhl=integer(), NGn=integer(), TBhrs=double(), HLhrs=double(), GNhrs=double(), DepthAvg=double(), DepthMax=double(), DepthMin=double()) 
+cn <- colnames(ay_info)
+# depth for TB only (GN are at the surface, and HL not measured)
+
+for (i in 1:length(s)) { 
+  y <- subset(catch, survey==s[i])
+  for (j in 1: length(a)){
+    ay_1 <- data.frame(survey=integer(), id=integer(), Ntraps=integer(), Nhl=integer(), NGn=integer(), TBhrs=double(), HLhrs=double(), GNhrs=double(), DepthAvg=double(), DepthMax=double(), DepthMin=double())
+    ya <- subset(y, id==a[j])
+    ay_1 <- rbind(ay_1, c(
+      as.integer(as.character(ya$survey[1])), 
+      as.integer(as.character(ya$id[1])), 
+      length(unique(subset(ya, gear=="TB")$station)),  
+      length(unique(subset(ya, gear=="HL")$station)), 
+      length(unique(subset(ya, gear=="GN")$station)), 
+      sum(subset(ya, gear=="TB")[!duplicated(ya$station),]$Fhrs, na.rm=TRUE),  
+      sum(subset(ya, gear=="HL")[!duplicated(ya$station),]$Fhrs, na.rm=TRUE), 
+      sum(subset(ya, gear=="GN")[!duplicated(ya$station),]$Fhrs, na.rm=TRUE), 
+      mean(subset(ya, gear=="TB")[!duplicated(ya$station),]$bdep, na.rm=TRUE), 
+      max(subset(ya, gear=="TB")[!duplicated(ya$station),]$bdep, na.rm=TRUE), 
+      min(subset(ya, gear=="TB")[!duplicated(ya$station),]$bdep, na.rm=TRUE)    ))
+    colnames(ay_1) <- cn
+    ay_info <- rbind(ay_info, ay_1)
+    colnames(ay_info) <- cn
+  }
+}
+write.csv2(ay_info, "Area_Station_table.csv")
+
+#' ANALYSIS OF CATCHES BY DEPTH
+#' - plot catch vs. depth
+#' - Plot catch of single species (10 most common) vs. depth
+#' - investigate statistical influence of depth (e.g GAM model)
+
+
 
 
 
@@ -590,7 +631,7 @@ lw.colours<- c("gray10", brewer.pal(length(study.species), "Set1"))
 for (i in 1:length(study.species)){ 
   
   ss<-subset(lw.select, species==study.species[i])
-  lw.plot.1<-ggplot(ss, aes(length, weight)) + geom_point() + ggtitle(species.list[grep(study.species[i], species.list[,3]),4]) + theme_classic() + theme(title = element_text(face="italic"))
+  lw.plot.1<-ggplot(ss, aes(length, weight)) + geom_point() + ggtitle(species.list[grep(study.species[i], species.list[,3]),4]) + theme_classic() + theme(title = element_text(face="italic")) + xlab("length (cm)") + ylab("weight (g)")
   #' +stat_smooth(colour=lw.colours[1])
   #lw.plot.1
   
@@ -627,7 +668,7 @@ for (i in 1:length(study.species)){
 lw.layout<-matrix(1:6, nrow=3, byrow=TRUE)
 lw.plotlist<-list(LUTLU06.plot, LETLE02.plot, LUTLU04.plot, CARSC01.plot, CARSC04.plot, ACAAC28.plot)
 
-tiff(file="fig 9 LWplot.tiff", width=1900, height=1900, res=400, pointsize=8, compression=c("none"))
+tiff(file="fig 9 LWplot.tiff", width=3000, height=3000, res=400, pointsize=6, compression=c("none"))
 
 multiplot(LUTLU06.plot, LETLE02.plot, LUTLU04.plot, CARSC01.plot, CARSC04.plot, ACAAC28.plot, layout=lw.layout)
 dev.off()
